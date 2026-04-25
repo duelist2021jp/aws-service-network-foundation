@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample Script for Creating NetWork Stack (VPC,Public Subnet,Private Subnet,Internet Gateway,Nat Gateway,Route Table)
+Parameters:
+  Azname:
+    Description: Set 1st az-name
+    Type: String
+    Default: ap-northeast-1a
+    AllowedValues:
+      - ap-northeast-1a
+      - ap-northeast-1c
+      - ap-northeast-1d
+  VPCCidrBlock:
+    Description: VPC Cidr Block
+    Type: String
+    Default: 20.0.0.0/16
+  PrivateSubnetCidrBlock:
+    Description: Private Subnet Cidr Block for 1st az-name
+    Type: String
+    Default: 20.0.1.0/24
+  ResourceNetwork:
+    Description: StackName for Resource Gateway and Resource Configuration VPC
+    Type: String
+    Default: RG-Network
+
+Resources:
+  VPC02:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: !Ref VPCCidrBlock
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags: 
+        - Key: Name
+          Value: VPC02
+  PrivateSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC02
+      CidrBlock: !Ref PrivateSubnetCidrBlock
+      AvailabilityZone: !Ref Azname
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet02
+    DependsOn: VPC02
+  IGW02:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: IGW02
+    DependsOn: VPC02
+  IGWAttachToVPC:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC02
+      InternetGatewayId: !Ref IGW02 
+  NGW02:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AvailabilityMode: regional
+      ConnectivityType: public
+      VpcId: !Ref VPC02
+      Tags:
+        - Key: Name
+          Value: NGW02
+    DependsOn: IGWAttachToVPC
+  PrivateRtbl02:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC02
+      Tags:
+        - Key: Name
+          Value: PrivateRtbl02
+  PrivateRoute02:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PrivateRtbl02
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NGW02
+    DependsOn: NGW02
+  PrivateSubnetRouteTblAssociation02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRtbl02
+      SubnetId: !Ref PrivateSubnet02
+  PrivateSubnetSecGrp02:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private-SecGrp
+      VpcId: !Ref VPC02
+      Tags:
+        - Key: Name
+          Value: PrivateSecGrp02
+  ServiceNetworkEndpointSecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ServiceNetworkEndpoint-SecGrp
+      VpcId: !Ref VPC02
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref PrivateSubnetSecGrp02
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref PrivateSubnetSecGrp02
+      Tags:
+        - Key: Name
+          Value: ServiceNetworkEndpointSecGrp
+  ServiceNetwork01:
+    Type: AWS::VpcLattice::ServiceNetwork
+    Properties:
+      Name: my-service-network
+      AuthType: NONE
+      SharingConfig:
+        enabled: true
+      Tags:
+        - Key: Name
+          Value: ServiceNetwork01
+  ServiceNetworkResourceAssociation01:
+    Type: AWS::VpcLattice::ServiceNetworkResourceAssociation
+    Properties:
+      ServiceNetworkId: !GetAtt ServiceNetwork01.Id
+      ResourceConfigurationId: 
+        Fn::ImportValue: !Sub "${ResourceNetwork}--ResourceConfigID"
+  ServiceNetworkEndpoint01:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: ServiceNetwork
+      VpcId: !Ref VPC02
+      ServiceNetworkArn: !Ref ServiceNetwork01
+      SubnetIds:
+        - !Ref PrivateSubnet02
+      SecurityGroupIds:
+        - !Ref ServiceNetworkEndpointSecGrp
+      PrivateDnsEnabled: true
+      Tags:
+        - Key: Name
+          Value: ServiceNetworkEndpoint01
+Outputs:
+  VPC02ID:
+    Description: The ID of My VPC
+    Value: !Ref VPC02
+    Export:
+      Name: !Sub "${AWS::StackName}--VPCId"
+  VPC02CidrBlock:
+    Description: The CIDR block of My VPC
+    Value: !GetAtt VPC02.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}--VPCCidrBlock"
+  PrivateSubnet02ID:
+    Description: The ID of My Private Subnet for Azname
+    Value: !Ref PrivateSubnet02
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnet02ID"
+  PrivateSubnetSecGrp02ID:
+    Description: The ID of My Private Security Group
+    Value: !Ref PrivateSubnetSecGrp02
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnetSecGrp02ID"
+  
+  
+  
+
+      
+  

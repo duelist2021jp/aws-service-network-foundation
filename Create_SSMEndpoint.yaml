@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample Script for Creating VPC Endpoint with SSM and SSM-Messages and EC2-Messages
+
+Parameters:
+  MyNetworkStackName:
+    Description: This stack name is already created MyNetwork Stack for provisioning EC2 Instance
+    Type: String
+    Default: CS-ServiceNetwork
+
+Resources:
+  SSMEndpointSecGrp:  
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for VPC Endpoint (SSM)
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${MyNetworkStackName}--VPCId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp:
+            Fn::ImportValue:
+              !Sub "${MyNetworkStackName}--VPCCidrBlock"
+      Tags:
+      - Key: Name
+        Value: SSMEndpoint-Security-Group
+  MySSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: 
+        !Sub "com.amazonaws.${AWS::Region}.ssm"
+      PrivateDnsEnabled: true
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${MyNetworkStackName}--VPCId"
+      SubnetIds:
+        - Fn::ImportValue:
+              !Sub "${MyNetworkStackName}--PrivateSubnet02ID"  
+      SecurityGroupIds: # Must be a list of one or more
+        - !Ref SSMEndpointSecGrp
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action:
+              - "*"
+            Resource:
+              - "*"
+    DependsOn: SSMEndpointSecGrp
+  MySSMMSGEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: 
+        !Sub "com.amazonaws.${AWS::Region}.ssmmessages"
+      PrivateDnsEnabled: true
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${MyNetworkStackName}--VPCId"
+      SubnetIds:
+        - Fn::ImportValue:
+              !Sub "${MyNetworkStackName}--PrivateSubnet02ID"  
+      SecurityGroupIds: # Must be a list of one or more
+        - !Ref SSMEndpointSecGrp
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action:
+              - "*"
+            Resource:
+              - "*"
+    DependsOn: SSMEndpointSecGrp
+  MySSMEC2MSGEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      ServiceName: 
+        !Sub "com.amazonaws.${AWS::Region}.ec2messages"
+      PrivateDnsEnabled: true
+      VpcId:
+        Fn::ImportValue:
+          !Sub "${MyNetworkStackName}--VPCId"
+      SubnetIds:
+        - Fn::ImportValue:
+              !Sub "${MyNetworkStackName}--PrivateSubnet02ID"  
+      SecurityGroupIds: # Must be a list of one or more
+        - !Ref SSMEndpointSecGrp
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: "*"
+            Action:
+              - "*"
+            Resource:
+              - "*"
+    DependsOn: SSMEndpointSecGrp
+  

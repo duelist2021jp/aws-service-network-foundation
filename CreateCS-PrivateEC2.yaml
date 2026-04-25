@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample Script for Creating Public/Private EC2 Instance
+
+Parameters:
+  MyNetworkStackName:
+    Description: This stack name is already created Network Stack for provisioning Public/Private EC2 Instance
+    Type: String
+    Default: CS-ServiceNetwork
+
+Resources:
+  MyPrivateInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      CreditSpecification: 
+        CPUCredits: standard
+      InstanceType: t2.micro
+      ImageId: ami-0b2cd2a95639e0e5b
+      IamInstanceProfile: EC2Instance_Role
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          SubnetId: 
+            Fn::ImportValue: 
+              !Sub "${MyNetworkStackName}--PrivateSubnet02ID"
+          GroupSet: 
+            -
+              Fn::ImportValue: 
+                !Sub "${MyNetworkStackName}--PrivateSubnetSecGrp02ID"
+      UserData:
+        Fn::Base64: !Sub |
+            #!/bin/bash
+            apt update -y
+            apt dist-upgrade -y
+            apt install -y postgresql-client-16
+      Tags:
+        - Key: Name
+          Value: CS-PrivateEC2-Instance
+  
+Outputs:
+  MyPrivateInstanceIPaddr:
+    Description: My Private Instance's Private IP address for AzName
+    Value: !GetAtt MyPrivateInstance.PrivateIp
+  
+
+        
+      
+        

@@ -1,0 +1,225 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Sample Script for Creating NetWork Stack (VPC,Public Subnet,Private Subnet,Internet Gateway,Nat Gateway,Route Table)
+Parameters:
+  Azname01:
+    Description: Set 1st az-name
+    Type: String
+    Default: ap-northeast-1a
+    AllowedValues:
+      - ap-northeast-1a
+      - ap-northeast-1c
+      - ap-northeast-1d
+  Azname02:
+    Description: Set 2nd az-name
+    Type: String
+    Default: ap-northeast-1c
+    AllowedValues:
+      - ap-northeast-1a
+      - ap-northeast-1c
+      - ap-northeast-1d
+  VPCCidrBlock:
+    Description: VPC Cidr Block
+    Type: String
+    Default: 10.0.0.0/16
+  PrivateSubnetCidrBlock01:
+    Description: Private Subnet Cidr Block for 1st az-name
+    Type: String
+    Default: 10.0.1.0/24
+  PrivateSubnetCidrBlock02:
+    Description: Private Subnet Cidr Block for 2nd az-name
+    Type: String
+    Default: 10.0.2.0/24
+      
+Resources:
+  VPC01:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: !Ref VPCCidrBlock
+      EnableDnsHostnames: 'true'
+      EnableDnsSupport: 'true'
+      Tags: 
+        - Key: Name
+          Value: VPC01
+  PrivateSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC01
+      CidrBlock: !Ref PrivateSubnetCidrBlock01
+      AvailabilityZone: !Ref Azname01
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet01
+    DependsOn: VPC01
+  PrivateSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC01
+      CidrBlock: !Ref PrivateSubnetCidrBlock02
+      AvailabilityZone: !Ref Azname02
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet02
+    DependsOn: VPC01
+  PrivateRtbl01:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC01
+      Tags:
+        - Key: Name
+          Value: PrivateRtbl01
+  PrivateRtbl02:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC01
+      Tags:
+        - Key: Name
+          Value: PrivateRtbl02
+  PrivateSubnetRouteTblAssociation01:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRtbl01
+      SubnetId: !Ref PrivateSubnet01
+  PrivateSubnetRouteTblAssociation02:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateRtbl02
+      SubnetId: !Ref PrivateSubnet02
+  ResourceGatewaySecGrp:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ResourceGatewaySecGrp
+      VpcId: !Ref VPC01
+      Tags:
+        - Key: Name
+          Value: ResourceGatewaySecGrp
+  PrivateSubnetSecGrp01:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PrivateSecGrp01
+      VpcId: !Ref VPC01
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref ResourceGatewaySecGrp
+          IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+      Tags:
+        - Key: Name
+          Value: PrivateSecGrp01
+  PrivateSubnetSecGrp02:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PrivateSecGrp02
+      VpcId: !Ref VPC01
+      Tags:
+        - Key: Name
+          Value: PrivateSecGrp02
+  RDSSubnetGrp01:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DB Subnet Group for RDS Instance
+      DBSubnetGroupName: rdssubnetgrp
+      SubnetIds:
+        - !Ref PrivateSubnet01
+        - !Ref PrivateSubnet02
+      Tags:
+        - Key: Name
+          Value: RDSSubnetGrp01
+    DependsOn: PrivateSubnet01
+  RDS01:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t3.small
+      DBInstanceIdentifier: rds-pgsql
+      DBName: db01
+      AllocatedStorage: '20'
+      AvailabilityZone: !Ref Azname01
+      Engine: postgres
+      EngineVersion: 16.6
+      ManageMasterUserPassword: true
+      MasterUsername: postgres
+      MasterUserSecret:
+        KmsKeyId: '{{resolve:ssm:MyKMSKeyID}}'
+      PubliclyAccessible: 'false'
+      VPCSecurityGroups:
+        - !Ref PrivateSubnetSecGrp01
+      DBSubnetGroupName: !Ref RDSSubnetGrp01
+      NetworkType: IPV4
+      StorageType: gp2
+      Tags:
+        - Key: Name
+          Value: RDS01
+    DependsOn: RDSSubnetGrp01 
+  ResourceGateway01:
+    Type: AWS::VpcLattice::ResourceGateway
+    Properties:
+      IpAddressType: IPV4
+      Name: my-rgw
+      SecurityGroupIds:
+        - !Ref ResourceGatewaySecGrp
+      SubnetIds:
+        - !Ref PrivateSubnet01
+        - !Ref PrivateSubnet02
+      VpcIdentifier: !Ref VPC01
+      Tags:
+        - Key: Name
+          Value: my-rgw
+  ResourceConfig01:
+    Type: AWS::VpcLattice::ResourceConfiguration
+    Properties:
+      Name: my-rcf
+      ResourceConfigurationType: ARN
+      ResourceGatewayId: !Ref ResourceGateway01
+      ResourceConfigurationDefinition: 
+        ArnResource: !GetAtt RDS01.DBInstanceArn
+      Tags:
+        - Key: Name
+          Value: my-rcf
+    DependsOn: RDS01
+
+
+Outputs:
+  VPC01ID:
+    Description: The ID of My VPC
+    Value: !Ref VPC01
+    Export:
+      Name: !Sub "${AWS::StackName}--VPCId"
+  VPC01CidrBlock:
+    Description: The CIDR block of My VPC
+    Value: !GetAtt VPC01.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}--VPCCidrBlock"
+  PrivateSubnet01ID:
+    Description: The ID of My Private Subnet for Azname01
+    Value: !Ref PrivateSubnet01
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnet01ID"
+  PrivateSubnet02ID:
+    Description: The ID of My Private Subnet for Azname02
+    Value: !Ref PrivateSubnet02
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnet02ID"
+  PrivateSubnetSecGrp01ID:
+    Description: The ID of Private Security Group 01
+    Value: !Ref PrivateSubnetSecGrp01
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnetSecGrp01ID"
+  PrivateSubnetSecGrp02ID:
+    Description: The ID of Private Security Group 02
+    Value: !Ref PrivateSubnetSecGrp02
+    Export:
+      Name: !Sub "${AWS::StackName}--PrivateSubnetSecGrp02ID"
+  ResourceConfigARN:
+    Description: Resource Configuration ARN
+    Value: !Ref ResourceConfig01
+    Export:
+      Name: !Sub "${AWS::StackName}--ResourceConfigARN"
+  ResourceConfigID:
+    Description: Resource Configuration ID
+    Value: !GetAtt ResourceConfig01.Id
+    Export:
+      Name: !Sub "${AWS::StackName}--ResourceConfigID"
+  
+  
+
+      
+  
